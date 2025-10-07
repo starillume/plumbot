@@ -3,29 +3,33 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
+	"github.com/joho/godotenv"
 	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
-	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 )
 
-type Commit struct {
-	SHA    string `json:"sha"`
-	Commit struct {
-		Message string    `json:"message"`
-		Author  struct {
-			Name string    `json:"name"`
-			Date time.Time `json:"date"`
-		} `json:"author"`
-	} `json:"commit"`
+type CommitRequest struct {
+	SHA     string `json:"sha"`
+	Commit  `json:"commit"`
 	HTMLURL string `json:"html_url"`
 }
 
-func getFeatCommits(repo, token string) ([]Commit, error) {
+type Commit struct {
+	Message string `json:"message"`
+	Author  Author `json:"author"`
+}
+
+type Author struct {
+	Name string    `json:"name"`
+	Date time.Time `json:"date"`
+}
+
+func getFeatCommits(repo, token string) ([]CommitRequest, error) {
 	url := "https://api.github.com/repos/" + repo + "/commits"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -50,13 +54,13 @@ func getFeatCommits(repo, token string) ([]Commit, error) {
 		return nil, fmt.Errorf("github api error: %s - %s", resp.Status, string(body))
 	}
 
-	var commits []Commit
+	var commits []CommitRequest
 	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil {
 		return nil, err
 	}
-	
+
 	re := regexp.MustCompile(`(?i)^feat(\(.*\))?:`)
-	var feats []Commit
+	var feats []CommitRequest
 	for _, c := range commits {
 		if re.MatchString(c.Commit.Message) {
 			feats = append(feats, c)
@@ -66,10 +70,24 @@ func getFeatCommits(repo, token string) ([]Commit, error) {
 	return feats, nil
 }
 
-func formatCommitMessage(c Commit) string {
-	msg := regexp.MustCompile(`(?i)^feat(\(.*\))?:\s*`).ReplaceAllString(c.Commit.Message, "")
-	return fmt.Sprintf("\"[%s](%s)\"\nby %s, at %s\n", strings.TrimSpace(msg), c.HTMLURL, c.Commit.Author.Name, c.Commit.Author.Date.Format("02/01/2006, 15:03 PM"))}
+func formatCommitMessage(c CommitRequest) string {
+	re := regexp.MustCompile(`(?i)^feat(?:\(([^)]+)\))?:\s*(.*)$`)
+	matches := re.FindStringSubmatch(c.Commit.Message)
 
+	var scope, msg string
+	if len(matches) > 2 {
+		scope = matches[1]
+		msg = matches[2]
+	} else {
+		msg = c.Commit.Message
+	}
+
+	if scope != "" {
+		msg = fmt.Sprintf("%s: %s", scope, msg)
+	}
+
+	return fmt.Sprintf("[%s](%s)\nby %s, at %s\n", strings.TrimSpace(msg), c.HTMLURL, c.Commit.Author.Name, c.Commit.Author.Date.Format("02/01/2006, 15:03 PM"))
+}
 func loadCache() string {
 	data, err := os.ReadFile(".cache")
 	if err != nil {
@@ -92,7 +110,7 @@ func sendNewCommits(dg *discordgo.Session, channelID, repo, token string) error 
 	}
 
 	lastSent := loadCache()
-	newCommits := []Commit{}
+	newCommits := []CommitRequest{}
 
 	for _, c := range feats {
 		if c.SHA == lastSent {
@@ -105,12 +123,12 @@ func sendNewCommits(dg *discordgo.Session, channelID, repo, token string) error 
 		return nil
 	}
 
-	message := "there are new features in plum priestess!\n\n"
+	msg := "there are new features in plum priestess!\n\n"
 	for i := len(newCommits) - 1; i >= 0; i-- {
-		message += formatCommitMessage(newCommits[i]) + "\n"
+		msg += formatCommitMessage(newCommits[i]) + "\n"
 	}
 
-	_, err = dg.ChannelMessageSend(channelID, message)
+	_, err = dg.ChannelMessageSend(channelID, msg)
 	if err != nil {
 		return err
 	}
@@ -129,7 +147,7 @@ func main() {
 	repo := os.Getenv("GITHUB_REPO")
 	githubToken := os.Getenv("GITHUB_TOKEN")
 
-	if token == "" || channelID == "" || repo == "" {
+	if token == "" || channelID == "" || repo == "" || githubToken == "" {
 		fmt.Println("missing required env vars: DISCORD_TOKEN, DISCORD_CHANNEL_ID, GITHUB_REPO, GITHUB_TOKEN")
 		os.Exit(1)
 	}
@@ -154,4 +172,3 @@ func main() {
 		}
 	}
 }
-
