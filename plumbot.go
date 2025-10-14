@@ -84,13 +84,32 @@ func formatCommitMessage(c CommitRequest) string {
 
 	msg = strings.SplitN(msg, "\n", 2)[0]
 
+	coAuthorRe := regexp.MustCompile(`(?mi)^co-authored-by:\s*([^<\n]+)`)
+	coAuthors := coAuthorRe.FindAllStringSubmatch(c.Commit.Message, -1)
+
+	var names []string
+	for _, author := range coAuthors {
+		name := strings.TrimSpace(author[1])
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+
 	if scope != "" {
 		msg = fmt.Sprintf("%s: %s", scope, msg)
 	}
 
-	return fmt.Sprintf("[%s](%s)\nby %s, at %s\n", strings.TrimSpace(msg), c.HTMLURL, c.Commit.Author.Name, c.Commit.Author.Date.Format("02/01/2006, 15:03 PM"))
-}
+	by := c.Commit.Author.Name
+	for i, name := range names {
+		if i == len(names) - 1 {
+			by += " and " + name
+		} else {
+			by += ", " + name
+		}
+	}
 
+	return fmt.Sprintf("[%s](%s)\nby %s, at %s\n", strings.TrimSpace(msg), c.HTMLURL, by, c.Commit.Author.Date.Format("02/01/2006, 15:03 PM"))
+}
 func loadCache() string {
 	data, err := os.ReadFile(".cache")
 	if err != nil {
