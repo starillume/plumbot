@@ -71,7 +71,7 @@ func getFeatCommits(repo, token string) ([]CommitRequest, error) {
 }
 
 func formatCommitMessage(c CommitRequest) string {
-	re := regexp.MustCompile(`(?i)^feat(?:\(([^)]+)\))?:\s*(.*)$`)
+	re := regexp.MustCompile(`(?is)^feat(?:\(([^)]+)\))?:\s*(.*)$`)
 	matches := re.FindStringSubmatch(c.Commit.Message)
 
 	var scope, msg string
@@ -82,12 +82,15 @@ func formatCommitMessage(c CommitRequest) string {
 		msg = c.Commit.Message
 	}
 
+	msg = strings.SplitN(msg, "\n", 2)[0]
+
 	if scope != "" {
 		msg = fmt.Sprintf("%s: %s", scope, msg)
 	}
 
 	return fmt.Sprintf("[%s](%s)\nby %s, at %s\n", strings.TrimSpace(msg), c.HTMLURL, c.Commit.Author.Name, c.Commit.Author.Date.Format("02/01/2006, 15:03 PM"))
 }
+
 func loadCache() string {
 	data, err := os.ReadFile(".cache")
 	if err != nil {
