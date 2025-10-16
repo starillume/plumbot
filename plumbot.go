@@ -59,10 +59,12 @@ func getFeatCommits(repo, token string) ([]CommitRequest, error) {
 		return nil, err
 	}
 
-	re := regexp.MustCompile(`(?i)^feat(\(.*\))?:`)
+	featRe := regexp.MustCompile(`(?i)^feat(\(.*\))?:`)
+	prRe := regexp.MustCompile(`(?i)\(#\d+\)$`)
 	var feats []CommitRequest
 	for _, c := range commits {
-		if re.MatchString(c.Commit.Message) {
+		title := strings.SplitN(c.Commit.Message, "\n", 2)[0]
+		if featRe.MatchString(title) && !prRe.MatchString(title) {
 			feats = append(feats, c)
 		}
 	}
